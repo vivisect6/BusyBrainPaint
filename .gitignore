@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Distribution
+build/
+dist/
+*.egg-info/
+
+# Game saves and generated content
+save.json
+progress.bin
+gallery/
+
+# OS
+.DS_Store
+Thumbs.db
