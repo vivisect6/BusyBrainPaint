@@ -23,11 +23,17 @@ dist/
 # Game saves and generated content
 save.json
 progress.bin
+saves/
 gallery/
+puzzles/current/
+puzzles/cli_test/
+puzzles/test_generated/
+puzzles/test_settings/
 
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Claude Code
 .claude/
