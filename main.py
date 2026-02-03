@@ -1,5 +1,7 @@
 """BusyBrainPaint - Paint-by-numbers mandala game."""
 
+import sys
+from datetime import datetime
 from pathlib import Path
 
 import pygame
@@ -10,6 +12,8 @@ from input_handler import InputHandler, BUTTON_A, BUTTON_B, BUTTON_LB, BUTTON_RB
 from puzzle_loader import Puzzle, load_puzzle
 from save_manager import SaveManager, create_save_data
 from selection import SelectionController
+from main_menu import run_main_menu
+from settings import run_settings_menu, PuzzleSettings
 
 
 class GameRenderer:
@@ -409,30 +413,180 @@ class GameRenderer:
         self.screen.blit(hint_rendered, (20, self.screen_h - 30))
 
 
-def main() -> None:
-    """Main entry point."""
-    pygame.init()
+def create_puzzle_snapshot(
+    puzzle: Puzzle,
+    renderer: "GameRenderer",
+) -> pygame.Surface:
+    """Create a snapshot image of the completed puzzle.
 
-    # Load stub puzzle
-    puzzle_dir = Path(__file__).parent / "puzzles" / "stub"
-    puzzle_path_str = "puzzles/stub"  # Relative path for save file
+    Args:
+        puzzle: The completed puzzle.
+        renderer: The game renderer with filled surfaces.
 
-    if not puzzle_dir.exists():
-        print(f"Puzzle not found at {puzzle_dir}")
-        print("Run 'python create_stub_puzzle.py' first to generate test assets.")
-        return
+    Returns:
+        A pygame Surface containing the completed puzzle image.
+    """
+    # Create a surface matching the puzzle size
+    snapshot = pygame.Surface((puzzle.width, puzzle.height))
 
+    # Draw the base (unfilled background with outlines)
+    snapshot.blit(renderer.base_surface, (0, 0))
+
+    # Draw all filled regions
+    snapshot.blit(renderer.filled_surface, (0, 0))
+
+    return snapshot
+
+
+def save_snapshot_to_gallery(
+    snapshot: pygame.Surface,
+    gallery_dir: Path,
+) -> Path | None:
+    """Save a puzzle snapshot to the gallery.
+
+    Args:
+        snapshot: The puzzle snapshot surface.
+        gallery_dir: Path to gallery directory.
+
+    Returns:
+        Path to saved image, or None if save failed.
+    """
+    # Ensure gallery directory exists
+    gallery_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"puzzle_{timestamp}.png"
+    filepath = gallery_dir / filename
+
+    try:
+        pygame.image.save(snapshot, str(filepath))
+        return filepath
+    except pygame.error as e:
+        print(f"Failed to save snapshot: {e}")
+        return None
+
+
+def show_completion_screen(
+    screen: pygame.Surface,
+    input_handler: InputHandler,
+    snapshot: pygame.Surface,
+) -> None:
+    """Show the puzzle completion screen.
+
+    Args:
+        screen: Pygame display surface.
+        input_handler: Input handler instance.
+        snapshot: The completed puzzle snapshot.
+    """
+    clock = pygame.time.Clock()
+    screen_w, screen_h = screen.get_size()
+
+    # Fonts
+    title_font = pygame.font.Font(None, 72)
+    hint_font = pygame.font.Font(None, 32)
+
+    # Scale snapshot to fit screen nicely
+    img_w, img_h = snapshot.get_size()
+    max_w, max_h = screen_w - 100, screen_h - 200
+    scale = min(max_w / img_w, max_h / img_h, 2.0)  # Allow up to 2x scaling
+    new_w, new_h = int(img_w * scale), int(img_h * scale)
+    scaled_snapshot = pygame.transform.smoothscale(snapshot, (new_w, new_h))
+
+    # Animation state
+    fade_in = 0.0
+    celebration_time = 0.0
+
+    running = True
+    while running:
+        dt = clock.tick(60) / 1000.0
+        fade_in = min(fade_in + dt * 2.0, 1.0)  # Fade in over 0.5 seconds
+        celebration_time += dt
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                    running = False
+
+        input_handler.update()
+
+        # Any button press after fade-in completes
+        if fade_in >= 1.0:
+            if input_handler.is_button_pressed(BUTTON_A) or input_handler.is_button_pressed(BUTTON_B):
+                running = False
+
+        # Render
+        screen.fill((20, 25, 30))
+
+        # Draw title with gentle pulse
+        pulse = 1.0 + 0.05 * abs((celebration_time * 2) % 2 - 1)
+        title_text = "Puzzle Complete!"
+        title_color = (100, 220, 150)
+        title_surf = title_font.render(title_text, True, title_color)
+        title_rect = title_surf.get_rect(centerx=screen_w // 2, top=40)
+
+        # Scale title with pulse
+        if pulse != 1.0:
+            pw, ph = title_surf.get_size()
+            scaled_title = pygame.transform.smoothscale(
+                title_surf, (int(pw * pulse), int(ph * pulse))
+            )
+            title_rect = scaled_title.get_rect(centerx=screen_w // 2, top=40)
+            screen.blit(scaled_title, title_rect)
+        else:
+            screen.blit(title_surf, title_rect)
+
+        # Draw snapshot with fade-in
+        snapshot_rect = scaled_snapshot.get_rect(center=(screen_w // 2, screen_h // 2 + 20))
+        if fade_in < 1.0:
+            temp = scaled_snapshot.copy()
+            temp.set_alpha(int(255 * fade_in))
+            screen.blit(temp, snapshot_rect)
+        else:
+            screen.blit(scaled_snapshot, snapshot_rect)
+
+        # Draw border around snapshot
+        border_rect = snapshot_rect.inflate(8, 8)
+        pygame.draw.rect(screen, (80, 80, 90), border_rect, 3, border_radius=4)
+
+        # Draw hint
+        hint_text = "Press A or B to continue"
+        hint_surf = hint_font.render(hint_text, True, (120, 120, 120))
+        hint_rect = hint_surf.get_rect(centerx=screen_w // 2, bottom=screen_h - 40)
+        screen.blit(hint_surf, hint_rect)
+
+        pygame.display.flip()
+
+
+def run_game(
+    screen: pygame.Surface,
+    input_handler: InputHandler,
+    puzzle_dir: Path,
+    puzzle_path_str: str,
+    gallery_dir: Path | None = None,
+) -> bool:
+    """Run the main game loop.
+
+    Args:
+        screen: Pygame display surface.
+        input_handler: Input handler instance.
+        puzzle_dir: Path to puzzle directory.
+        puzzle_path_str: Puzzle path string for save file.
+        gallery_dir: Path to gallery directory for saving completed puzzles.
+
+    Returns:
+        True if puzzle was completed, False if exited early.
+    """
+    screen_w, screen_h = screen.get_size()
+
+    # Load puzzle
     print("Loading puzzle...")
     puzzle = load_puzzle(puzzle_dir)
     print(f"Loaded: {puzzle.width}x{puzzle.height}, {puzzle.num_regions} regions")
 
-    # Initialize display (fullscreen)
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-    pygame.display.set_caption("BusyBrainPaint")
-    screen_w, screen_h = screen.get_size()
-
     # Initialize subsystems
-    input_handler = InputHandler()
     selection = SelectionController(puzzle)
     renderer = GameRenderer(puzzle, screen)
     camera = Camera(puzzle.width, puzzle.height, screen_w, screen_h)
@@ -610,6 +764,27 @@ def main() -> None:
                     print(f"Fill completed! Region {completed_region} filled. Progress: {filled_count}/{puzzle.num_regions}")
                 else:
                     print(f"Fill completed! Region {completed_region} filled. (Save failed)")
+
+                # Check for puzzle completion
+                if all(puzzle.filled):
+                    print("Puzzle complete!")
+
+                    # Create snapshot of completed puzzle
+                    snapshot = create_puzzle_snapshot(puzzle, renderer)
+
+                    # Save to gallery
+                    if gallery_dir is not None:
+                        saved_path = save_snapshot_to_gallery(snapshot, gallery_dir)
+                        if saved_path:
+                            print(f"Saved to gallery: {saved_path}")
+
+                    # Show completion screen
+                    show_completion_screen(screen, input_handler, snapshot)
+
+                    # Delete save file (puzzle is complete)
+                    save_manager.delete_save()
+
+                    return True
             else:
                 # Wrong fill - just clear the temp surface
                 renderer.clear_temp_fill()
@@ -621,6 +796,205 @@ def main() -> None:
 
         # Render
         renderer.render(selection.selected_region, selected_palette, camera, fill_controller)
+
+    # Exited without completing
+    return False
+
+
+def generate_new_puzzle(
+    screen: pygame.Surface,
+    input_handler: InputHandler,
+    settings: PuzzleSettings,
+) -> tuple[Path, str] | None:
+    """Generate a new puzzle from settings.
+
+    Args:
+        screen: Pygame display surface.
+        input_handler: Input handler instance.
+        settings: Puzzle generation settings.
+
+    Returns:
+        Tuple of (puzzle_dir, puzzle_path_str) if successful, None if failed.
+    """
+    from settings import SettingsMenu
+
+    # Create output directory
+    base_dir = Path(__file__).parent / "puzzles" / "current"
+    puzzle_path_str = "puzzles/current"
+
+    # Show generating message
+    screen.fill((30, 30, 35))
+    font = pygame.font.Font(None, 48)
+    text = font.render("Generating puzzle...", True, (200, 200, 200))
+    text_rect = text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
+    screen.blit(text, text_rect)
+    pygame.display.flip()
+
+    # Generate puzzle
+    menu = SettingsMenu(screen)
+    menu.settings = settings
+    if menu.generate_puzzle(base_dir):
+        return (base_dir, puzzle_path_str)
+    return None
+
+
+def show_gallery(screen: pygame.Surface, input_handler: InputHandler, gallery_dir: Path) -> None:
+    """Show the gallery of completed puzzles.
+
+    Args:
+        screen: Pygame display surface.
+        input_handler: Input handler instance.
+        gallery_dir: Path to gallery directory.
+    """
+    from menu import MenuRenderer
+
+    # Placeholder - will be fully implemented in milestone 11
+    clock = pygame.time.Clock()
+    font = pygame.font.Font(None, 48)
+    hint_font = pygame.font.Font(None, 32)
+
+    # Get list of gallery images
+    images: list[Path] = []
+    if gallery_dir.exists():
+        for ext in ("*.png", "*.jpg", "*.jpeg"):
+            images.extend(gallery_dir.glob(ext))
+    images.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    current_index = 0
+    current_image: pygame.Surface | None = None
+
+    if images:
+        try:
+            current_image = pygame.image.load(str(images[0]))
+        except pygame.error:
+            pass
+
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+
+        input_handler.update()
+
+        # B to go back
+        if input_handler.is_button_pressed(BUTTON_B):
+            running = False
+
+        # LB/RB to navigate images
+        if images:
+            if input_handler.is_button_pressed(BUTTON_LB):
+                current_index = (current_index - 1) % len(images)
+                try:
+                    current_image = pygame.image.load(str(images[current_index]))
+                except pygame.error:
+                    current_image = None
+            if input_handler.is_button_pressed(BUTTON_RB):
+                current_index = (current_index + 1) % len(images)
+                try:
+                    current_image = pygame.image.load(str(images[current_index]))
+                except pygame.error:
+                    current_image = None
+
+        # Render
+        screen.fill((30, 30, 35))
+
+        if not images:
+            text = font.render("Gallery is empty", True, (150, 150, 150))
+            text_rect = text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
+            screen.blit(text, text_rect)
+        elif current_image:
+            # Scale image to fit screen while maintaining aspect ratio
+            img_w, img_h = current_image.get_size()
+            screen_w, screen_h = screen.get_size()
+            max_w, max_h = screen_w - 100, screen_h - 150
+
+            scale = min(max_w / img_w, max_h / img_h, 1.0)
+            new_w, new_h = int(img_w * scale), int(img_h * scale)
+
+            scaled = pygame.transform.smoothscale(current_image, (new_w, new_h))
+            img_rect = scaled.get_rect(center=(screen_w // 2, screen_h // 2 - 30))
+            screen.blit(scaled, img_rect)
+
+            # Show image counter
+            counter = font.render(f"{current_index + 1} / {len(images)}", True, (200, 200, 200))
+            counter_rect = counter.get_rect(centerx=screen_w // 2, top=30)
+            screen.blit(counter, counter_rect)
+
+        # Show controls hint
+        hint = hint_font.render("LB/RB: Navigate | B: Back", True, (120, 120, 120))
+        hint_rect = hint.get_rect(centerx=screen.get_width() // 2, bottom=screen.get_height() - 30)
+        screen.blit(hint, hint_rect)
+
+        pygame.display.flip()
+        clock.tick(60)
+
+
+def main() -> None:
+    """Main entry point."""
+    pygame.init()
+
+    # Initialize display (fullscreen)
+    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    pygame.display.set_caption("BusyBrainPaint")
+
+    # Initialize input handler
+    input_handler = InputHandler()
+
+    # Set up paths
+    base_path = Path(__file__).parent
+    gallery_dir = base_path / "gallery"
+    save_manager = SaveManager()
+
+    # Main application loop - returns to menu after each game
+    running = True
+    while running:
+        # Show main menu
+        result = run_main_menu(screen, input_handler, save_manager, gallery_dir)
+
+        if result == "quit":
+            running = False
+
+        elif result == "new_game":
+            # Show settings menu
+            settings_result, settings = run_settings_menu(screen, input_handler)
+
+            if settings_result == "generate" and settings is not None:
+                # Generate new puzzle
+                gen_result = generate_new_puzzle(screen, input_handler, settings)
+                if gen_result:
+                    puzzle_dir, puzzle_path_str = gen_result
+                    # Clear old save since we have a new puzzle
+                    save_manager.delete_save()
+                    # Run the game
+                    run_game(screen, input_handler, puzzle_dir, puzzle_path_str, gallery_dir)
+                else:
+                    # Generation failed, return to menu
+                    print("Failed to generate puzzle")
+            # If cancelled, loop back to main menu
+
+        elif result == "continue":
+            # Load existing puzzle
+            puzzle_dir = base_path / "puzzles" / "current"
+            puzzle_path_str = "puzzles/current"
+
+            # Fallback to stub puzzle if current doesn't exist
+            if not puzzle_dir.exists():
+                stub_dir = base_path / "puzzles" / "stub"
+                if stub_dir.exists():
+                    puzzle_dir = stub_dir
+                    puzzle_path_str = "puzzles/stub"
+
+            if puzzle_dir.exists():
+                run_game(screen, input_handler, puzzle_dir, puzzle_path_str, gallery_dir)
+            else:
+                print(f"No puzzle found at {puzzle_dir}")
+
+        elif result == "gallery":
+            show_gallery(screen, input_handler, gallery_dir)
 
     pygame.quit()
     print("Done.")
