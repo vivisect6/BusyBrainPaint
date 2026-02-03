@@ -4,8 +4,11 @@ from pathlib import Path
 
 import pygame
 
-from input_handler import InputHandler, BUTTON_B, BUTTON_LB, BUTTON_RB
+from camera import Camera
+from fill_controller import FillController
+from input_handler import InputHandler, BUTTON_A, BUTTON_B, BUTTON_LB, BUTTON_RB, BUTTON_L3
 from puzzle_loader import Puzzle, load_puzzle
+from save_manager import SaveManager, create_save_data
 from selection import SelectionController
 
 
@@ -17,6 +20,13 @@ class GameRenderer:
     OUTLINE_COLOR = (60, 60, 60)
     HIGHLIGHT_COLOR = (255, 255, 255)
     UNFILLED_COLOR = (220, 220, 220)
+    NUMBER_COLOR = (80, 80, 80)
+    NUMBER_COLOR_SELECTED = (0, 0, 0)
+
+    # Region number visibility thresholds
+    MIN_AREA_FOR_NUMBER = 150  # Minimum region area to show number (always)
+    MIN_ZOOM_FOR_SMALL = 4.0  # Minimum zoom to show numbers on small regions
+    MIN_SCREEN_SIZE_FOR_NUMBER = 20  # Minimum screen pixels for number to fit
 
     def __init__(self, puzzle: Puzzle, screen: pygame.Surface) -> None:
         """Initialize renderer.
@@ -28,20 +38,6 @@ class GameRenderer:
         self.puzzle = puzzle
         self.screen = screen
         self.screen_w, self.screen_h = screen.get_size()
-
-        # Calculate scale to fit puzzle on screen with padding
-        padding = 100
-        available_w = self.screen_w - padding * 2
-        available_h = self.screen_h - padding * 2
-        scale_x = available_w / puzzle.width
-        scale_y = available_h / puzzle.height
-        self.scale = min(scale_x, scale_y, 6.0)  # Cap at 6x
-
-        # Puzzle position (centered)
-        self.puzzle_w = int(puzzle.width * self.scale)
-        self.puzzle_h = int(puzzle.height * self.scale)
-        self.puzzle_x = (self.screen_w - self.puzzle_w) // 2
-        self.puzzle_y = (self.screen_h - self.puzzle_h) // 2
 
         # Create surfaces
         self._create_surfaces()
@@ -57,6 +53,9 @@ class GameRenderer:
 
         # Filled surface (starts empty/transparent)
         self.filled_surface = pygame.Surface((w, h), pygame.SRCALPHA)
+
+        # Temp fill surface for preview during hold (cleared after commit/reject)
+        self.temp_fill_surface = pygame.Surface((w, h), pygame.SRCALPHA)
 
         # Highlight surface (redrawn each frame)
         self.highlight_surface = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -131,34 +130,219 @@ class GameRenderer:
         for y, x_start, x_end in self.puzzle.region_runs[region_id]:
             pygame.draw.line(self.filled_surface, color, (x_start, y), (x_end - 1, y))
 
-    def render(self, selected_region: int, selected_palette: int) -> None:
+    def draw_temp_fill(self, region_id: int, color_idx: int) -> None:
+        """Draw a preview fill on the temp surface.
+
+        Args:
+            region_id: Region to preview.
+            color_idx: Palette index to use for fill color.
+        """
+        if region_id < 0 or region_id >= self.puzzle.num_regions:
+            return
+        if color_idx < 0 or color_idx >= len(self.puzzle.palette):
+            return
+
+        color = self.puzzle.palette[color_idx]
+
+        for y, x_start, x_end in self.puzzle.region_runs[region_id]:
+            pygame.draw.line(self.temp_fill_surface, color, (x_start, y), (x_end - 1, y))
+
+    def clear_temp_fill(self) -> None:
+        """Clear the temp fill surface."""
+        self.temp_fill_surface.fill((0, 0, 0, 0))
+
+    def render(
+        self,
+        selected_region: int,
+        selected_palette: int,
+        camera: Camera,
+        fill_controller: FillController | None = None,
+    ) -> None:
         """Render the full game view.
 
         Args:
             selected_region: Currently selected region ID.
             selected_palette: Currently selected palette index.
+            camera: Camera for view transform.
+            fill_controller: Optional fill controller for preview rendering.
         """
         self.screen.fill(self.BACKGROUND)
 
-        # Update highlight
-        self.draw_region_highlight(selected_region)
+        # Update highlight (don't show during fill)
+        if fill_controller is None or not fill_controller.is_active():
+            self.draw_region_highlight(selected_region)
+        else:
+            self.highlight_surface.fill((0, 0, 0, 0))
 
         # Composite puzzle layers
         composite = self.base_surface.copy()
         composite.blit(self.filled_surface, (0, 0))
+
+        # Add temp fill surface with shake/fade if active
+        if fill_controller is not None and fill_controller.is_active():
+            shake_x, shake_y = fill_controller.get_reject_offset()
+            alpha = fill_controller.get_reject_alpha()
+
+            if alpha < 255:
+                # Create faded copy of temp surface
+                faded_temp = self.temp_fill_surface.copy()
+                faded_temp.set_alpha(alpha)
+                composite.blit(faded_temp, (shake_x, shake_y))
+            else:
+                composite.blit(self.temp_fill_surface, (shake_x, shake_y))
+
         composite.blit(self.highlight_surface, (0, 0))
 
-        # Scale and blit to screen
-        scaled = pygame.transform.scale(composite, (self.puzzle_w, self.puzzle_h))
-        self.screen.blit(scaled, (self.puzzle_x, self.puzzle_y))
+        # Get camera transform
+        origin_x, origin_y, zoom = camera.get_view_transform()
+
+        # Scale composite by zoom
+        scaled_w = int(self.puzzle.width * zoom)
+        scaled_h = int(self.puzzle.height * zoom)
+
+        if scaled_w > 0 and scaled_h > 0:
+            scaled = pygame.transform.scale(composite, (scaled_w, scaled_h))
+            # Blit at camera-determined position
+            self.screen.blit(scaled, (int(origin_x), int(origin_y)))
+
+        # Draw numbers inside unfilled regions
+        self._draw_region_numbers(camera, selected_region)
 
         # Draw palette indicator
         self._draw_palette_ui(selected_palette)
 
         # Draw selection info
-        self._draw_selection_info(selected_region)
+        self._draw_selection_info(selected_region, camera)
+
+        # Draw fill progress if filling
+        if fill_controller is not None and fill_controller.is_filling():
+            self._draw_fill_progress(fill_controller.progress, camera, selected_region)
 
         pygame.display.flip()
+
+    def _draw_fill_progress(
+        self, progress: float, camera: Camera, region_id: int
+    ) -> None:
+        """Draw fill progress indicator.
+
+        Args:
+            progress: Fill progress (0 to 1).
+            camera: Camera for positioning.
+            region_id: Region being filled.
+        """
+        # Get region centroid in screen coordinates
+        cx, cy = self.puzzle.region_centroid[region_id]
+        screen_x, screen_y = camera.world_to_screen(cx, cy)
+
+        # Draw progress ring
+        radius = 30
+        thickness = 6
+
+        # Background ring (dark)
+        pygame.draw.circle(
+            self.screen, (60, 60, 60), (int(screen_x), int(screen_y)), radius, thickness
+        )
+
+        # Progress arc
+        if progress > 0:
+            import math
+
+            start_angle = -math.pi / 2  # Start at top
+            end_angle = start_angle + progress * 2 * math.pi
+            rect = pygame.Rect(
+                int(screen_x) - radius,
+                int(screen_y) - radius,
+                radius * 2,
+                radius * 2,
+            )
+            pygame.draw.arc(
+                self.screen,
+                (100, 255, 100),
+                rect,
+                start_angle,
+                end_angle,
+                thickness,
+            )
+
+    def _draw_region_numbers(
+        self, camera: Camera, selected_region: int
+    ) -> None:
+        """Draw numbers inside unfilled regions.
+
+        Numbers are shown based on thresholds:
+        - Large regions (area >= MIN_AREA_FOR_NUMBER): always show
+        - Small regions: show if zoom >= MIN_ZOOM_FOR_SMALL or if selected
+        - Filled regions: never show
+
+        Args:
+            camera: Camera for coordinate transforms.
+            selected_region: Currently selected region ID.
+        """
+        # Get visible area bounds for culling
+        vis_x, vis_y, vis_w, vis_h = camera.get_visible_world_rect()
+        vis_right = vis_x + vis_w
+        vis_bottom = vis_y + vis_h
+
+        # Calculate font size based on zoom (with limits)
+        base_font_size = 14
+        font_size = int(base_font_size * min(camera.zoom, 4.0))
+        font_size = max(12, min(font_size, 36))
+        font = pygame.font.Font(None, font_size)
+
+        for region_id in range(self.puzzle.num_regions):
+            # Skip filled regions
+            if self.puzzle.filled[region_id]:
+                continue
+
+            area = self.puzzle.region_area[region_id]
+            if area == 0:
+                continue
+
+            # Determine if number should be shown
+            is_selected = region_id == selected_region
+            is_large = area >= self.MIN_AREA_FOR_NUMBER
+            is_zoomed_enough = camera.zoom >= self.MIN_ZOOM_FOR_SMALL
+
+            if not (is_selected or is_large or is_zoomed_enough):
+                continue
+
+            # Get centroid and check if in view
+            cx, cy = self.puzzle.region_centroid[region_id]
+            if cx < vis_x or cx > vis_right or cy < vis_y or cy > vis_bottom:
+                continue
+
+            # Convert to screen coordinates
+            screen_x, screen_y = camera.world_to_screen(cx, cy)
+
+            # Check if on screen
+            if (
+                screen_x < 0
+                or screen_x > self.screen_w
+                or screen_y < 0
+                or screen_y > self.screen_h
+            ):
+                continue
+
+            # Check if region is large enough on screen to fit a number
+            bbox = self.puzzle.region_bbox[region_id]
+            bbox_w = (bbox[2] - bbox[0]) * camera.zoom
+            bbox_h = (bbox[3] - bbox[1]) * camera.zoom
+            min_dim = min(bbox_w, bbox_h)
+
+            if min_dim < self.MIN_SCREEN_SIZE_FOR_NUMBER and not is_selected:
+                continue
+
+            # Get the number to display
+            color_idx = self.puzzle.region_color[region_id]
+            number = self.puzzle.palette_numbers[color_idx]
+
+            # Choose color based on selection
+            text_color = self.NUMBER_COLOR_SELECTED if is_selected else self.NUMBER_COLOR
+
+            # Render the number
+            text = font.render(str(number), True, text_color)
+            text_rect = text.get_rect(center=(int(screen_x), int(screen_y)))
+            self.screen.blit(text, text_rect)
 
     def _draw_palette_ui(self, selected_index: int) -> None:
         """Draw the palette selection UI.
@@ -196,11 +380,12 @@ class GameRenderer:
             text_rect = text.get_rect(center=rect.center)
             self.screen.blit(text, text_rect)
 
-    def _draw_selection_info(self, selected_region: int) -> None:
+    def _draw_selection_info(self, selected_region: int, camera: Camera) -> None:
         """Draw info about the selected region.
 
         Args:
             selected_region: Currently selected region ID.
+            camera: Camera for zoom display.
         """
         if selected_region < 0 or selected_region >= self.puzzle.num_regions:
             return
@@ -214,12 +399,12 @@ class GameRenderer:
         filled = self.puzzle.filled[selected_region]
         status = "Filled" if filled else "Empty"
 
-        text = f"Region {selected_region} | Target: {target_num} | Area: {area}px | {status}"
+        text = f"Region {selected_region} | Target: {target_num} | Area: {area}px | {status} | Zoom: {camera.zoom:.1f}x"
         rendered = font.render(text, True, (200, 200, 200))
         self.screen.blit(rendered, (20, 20))
 
         # Controls hint
-        hint = "Right Stick: Navigate | D-Pad: Jump | LB/RB: Palette | B: Exit"
+        hint = "A: Fill | RStick: Navigate | DPad: Jump | LStick: Pan | Triggers: Zoom | LB/RB: Palette"
         hint_rendered = font.render(hint, True, (150, 150, 150))
         self.screen.blit(hint_rendered, (20, self.screen_h - 30))
 
@@ -230,6 +415,7 @@ def main() -> None:
 
     # Load stub puzzle
     puzzle_dir = Path(__file__).parent / "puzzles" / "stub"
+    puzzle_path_str = "puzzles/stub"  # Relative path for save file
 
     if not puzzle_dir.exists():
         print(f"Puzzle not found at {puzzle_dir}")
@@ -243,25 +429,62 @@ def main() -> None:
     # Initialize display (fullscreen)
     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
     pygame.display.set_caption("BusyBrainPaint")
+    screen_w, screen_h = screen.get_size()
 
     # Initialize subsystems
     input_handler = InputHandler()
     selection = SelectionController(puzzle)
     renderer = GameRenderer(puzzle, screen)
+    camera = Camera(puzzle.width, puzzle.height, screen_w, screen_h)
+    fill_controller = FillController()
+    save_manager = SaveManager()
 
     # Game state
     selected_palette = 0
     running = True
     clock = pygame.time.Clock()
 
-    # Mark some regions as filled for testing
-    puzzle.filled[0] = True
-    puzzle.filled[3] = True
-    renderer.draw_filled_region(0)
-    renderer.draw_filled_region(3)
+    # Try to load saved state
+    saved_data = save_manager.load()
+    if saved_data is not None and saved_data.puzzle_path == puzzle_path_str:
+        print("Loading saved progress...")
+
+        # Restore filled regions
+        for i, is_filled in enumerate(saved_data.filled_regions):
+            if i < puzzle.num_regions and is_filled:
+                puzzle.filled[i] = True
+                renderer.draw_filled_region(i)
+
+        # Restore UI state
+        selected_palette = saved_data.selected_palette % len(puzzle.palette)
+        if 0 <= saved_data.selected_region < puzzle.num_regions:
+            selection.select_region(saved_data.selected_region)
+
+        # Restore camera state
+        camera.cam_x = saved_data.camera_x
+        camera.cam_y = saved_data.camera_y
+        camera.zoom = max(Camera.MIN_ZOOM, min(saved_data.camera_zoom, Camera.MAX_ZOOM))
+
+        filled_count = sum(1 for f in puzzle.filled if f)
+        print(f"Restored: {filled_count}/{puzzle.num_regions} regions filled")
+    else:
+        if saved_data is not None:
+            print("Save file is for a different puzzle, starting fresh")
+        else:
+            print("No save file found, starting fresh")
+
+    # Track previous state for movement detection
+    prev_selected_region = selection.selected_region
+    prev_cam_x, prev_cam_y = camera.cam_x, camera.cam_y
+    prev_zoom = camera.zoom
+
+    # Movement thresholds for fill cancellation
+    PAN_CANCEL_THRESHOLD = 5.0  # World pixels
+    ZOOM_CANCEL_THRESHOLD = 0.1  # Zoom units
 
     while running:
         dt_ms = clock.tick(60)
+        dt_sec = dt_ms / 1000.0
 
         # Process events
         for event in pygame.event.get():
@@ -274,29 +497,130 @@ def main() -> None:
         # Update input
         input_handler.update()
 
-        # Check exit
-        if input_handler.is_button_pressed(BUTTON_B):
+        # Check exit (only when not filling)
+        if input_handler.is_button_pressed(BUTTON_B) and not fill_controller.is_active():
             running = False
 
-        # Palette selection
-        if input_handler.is_button_pressed(BUTTON_LB):
-            selected_palette = (selected_palette - 1) % len(puzzle.palette)
-        if input_handler.is_button_pressed(BUTTON_RB):
-            selected_palette = (selected_palette + 1) % len(puzzle.palette)
+        # Track if any cancel-worthy movement happened
+        selection_changed = False
+        camera_moved = False
+        zoom_changed = False
 
-        # Right stick navigation
+        # Palette selection (only when not filling)
+        if not fill_controller.is_active():
+            if input_handler.is_button_pressed(BUTTON_LB):
+                selected_palette = (selected_palette - 1) % len(puzzle.palette)
+            if input_handler.is_button_pressed(BUTTON_RB):
+                selected_palette = (selected_palette + 1) % len(puzzle.palette)
+
+        # Right stick navigation (only when not filling)
         rx, ry = input_handler.state.right_stick
-        if selection.update_stick_selection(rx, ry, dt_ms):
-            print(f"Selected region {selection.selected_region}")
+        if not fill_controller.is_active():
+            if selection.update_stick_selection(rx, ry, dt_ms):
+                selection_changed = True
+                print(f"Selected region {selection.selected_region}")
+        elif abs(rx) > 0.5 or abs(ry) > 0.5:
+            # Cancel fill on right stick movement
+            selection_changed = True
 
-        # D-pad navigation
+        # D-pad navigation (only when not filling)
         if input_handler.state.dpad_pressed:
-            dx, dy = input_handler.state.dpad_pressed
-            if selection.handle_dpad(dx, dy):
-                print(f"Jumped to region {selection.selected_region}")
+            if not fill_controller.is_active():
+                dx, dy = input_handler.state.dpad_pressed
+                if selection.handle_dpad(dx, dy):
+                    selection_changed = True
+                    print(f"Jumped to region {selection.selected_region}")
+            else:
+                # Cancel fill on D-pad
+                selection_changed = True
+
+        # Camera controls: trigger zoom
+        if camera.update_zoom(input_handler.state.rt, input_handler.state.lt, dt_sec):
+            if abs(camera.zoom - prev_zoom) > ZOOM_CANCEL_THRESHOLD:
+                zoom_changed = True
+
+        # Camera controls: left stick pan
+        lx, ly = input_handler.state.left_stick
+        if camera.update_pan(lx, ly, dt_sec):
+            dx = abs(camera.cam_x - prev_cam_x)
+            dy = abs(camera.cam_y - prev_cam_y)
+            if dx > PAN_CANCEL_THRESHOLD or dy > PAN_CANCEL_THRESHOLD:
+                camera_moved = True
+
+        # Camera controls: L3 snap to selected region (only when not filling)
+        if input_handler.is_button_pressed(BUTTON_L3) and not fill_controller.is_active():
+            centroid = puzzle.region_centroid[selection.selected_region]
+            camera.snap_to(centroid[0], centroid[1])
+            print(f"Snapped camera to region {selection.selected_region}")
+
+        # Camera nudge: keep selected region visible when selection changes
+        if selection.selected_region != prev_selected_region:
+            prev_selected_region = selection.selected_region
+            centroid = puzzle.region_centroid[selection.selected_region]
+            camera.nudge_to_keep_visible(centroid[0], centroid[1], dt_sec)
+        else:
+            centroid = puzzle.region_centroid[selection.selected_region]
+            camera.nudge_to_keep_visible(centroid[0], centroid[1], dt_sec)
+
+        # Fill action: cancel on movement
+        if fill_controller.is_filling():
+            if selection_changed or camera_moved or zoom_changed:
+                fill_controller.cancel()
+                renderer.clear_temp_fill()
+                print("Fill cancelled due to movement")
+
+        # Fill action: start on A press
+        if input_handler.is_button_pressed(BUTTON_A) and not fill_controller.is_active():
+            region_id = selection.selected_region
+            # Don't allow filling already-filled regions
+            if not puzzle.filled[region_id]:
+                region_area = puzzle.region_area[region_id]
+                correct_idx = puzzle.region_color[region_id]
+                fill_controller.start_fill(
+                    region_id, region_area, selected_palette, correct_idx
+                )
+                # Draw preview
+                renderer.draw_temp_fill(region_id, selected_palette)
+                print(f"Started filling region {region_id}")
+
+        # Update fill controller
+        a_held = input_handler.is_button_held(BUTTON_A)
+        fill_completed, was_correct, completed_region = fill_controller.update(dt_sec, a_held)
+
+        # Handle fill completion
+        if fill_completed:
+            if was_correct:
+                # Commit the fill to permanent surface
+                puzzle.filled[completed_region] = True
+                renderer.draw_filled_region(completed_region)
+                renderer.clear_temp_fill()
+
+                # Autosave after successful fill
+                save_data = create_save_data(
+                    puzzle_path=puzzle_path_str,
+                    filled=puzzle.filled,
+                    selected_palette=selected_palette,
+                    selected_region=selection.selected_region,
+                    camera_x=camera.cam_x,
+                    camera_y=camera.cam_y,
+                    camera_zoom=camera.zoom,
+                )
+                if save_manager.save(save_data):
+                    filled_count = sum(1 for f in puzzle.filled if f)
+                    print(f"Fill completed! Region {completed_region} filled. Progress: {filled_count}/{puzzle.num_regions}")
+                else:
+                    print(f"Fill completed! Region {completed_region} filled. (Save failed)")
+            else:
+                # Wrong fill - just clear the temp surface
+                renderer.clear_temp_fill()
+                print("Wrong color! Fill rejected.")
+
+        # Update tracking for next frame
+        prev_cam_x, prev_cam_y = camera.cam_x, camera.cam_y
+        prev_zoom = camera.zoom
 
         # Render
-        renderer.render(selection.selected_region, selected_palette)
+        renderer.render(selection.selected_region, selected_palette, camera, fill_controller)
 
     pygame.quit()
     print("Done.")
