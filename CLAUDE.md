@@ -241,12 +241,13 @@ All presets must support:
 - Compute Voronoi diagram, clip to circle
 - Optionally Lloyd relax 1-3 iterations for smoother cells
 
+**Menu settings:** Size, Colors, Symmetry (4-16)
+
 **Parameters:**
-- `symmetry_slices` (6-24)
-- `point_count` (scaled with difficulty)
-- `radial_bias` (more points near edge vs center)
-- `relax_iters` (0-3)
-- `outline_thickness`
+- `symmetry_slices` (menu: 4-16)
+- `point_count` (auto-scaled by detail multiplier)
+- `radial_bias` (internal, default 0.5)
+- `relax_iters` (internal, fixed at 1)
 
 **Why:** Always closed cells, scalable complexity, very robust.
 
@@ -257,12 +258,16 @@ All presets must support:
 - Define layers with sine/cos harmonics; threshold into bands
 - Combine rings + petals + spokes with boolean ops
 
+**Menu settings:** Size, Colors, Symmetry (4-16), Rings (3-8), Petals (None/Shallow/Medium/Deep)
+
 **Parameters:**
-- `symmetry_slices`
-- `ring_count`
-- `petal_freq` + `petal_depth`
-- `spoke_count` + `spoke_width`
-- `jitter` (tiny, optional, to avoid perfect repetition)
+- `symmetry_slices` (menu: 4-16)
+- `ring_count` (menu: 3-8)
+- `petal_depth` (menu: None=0.0, Shallow=0.15, Medium=0.3, Deep=0.5)
+- `petal_freq` (internal, defaults to symmetry_slices)
+- `spoke_count` (internal, defaults to symmetry_slices)
+- `spoke_width` (internal, default 0.02)
+- `jitter` (internal, default 0.0)
 
 **Why:** Deterministic, controllable, and produces clean regions.
 
@@ -270,34 +275,40 @@ All presets must support:
 **Look:** crisp mosaic / "islamic tile" vibes
 **Method:**
 - Build base tiling (hex/tri/square) in world coords
-- Apply radial symmetry (rotate or polar-warp)
-- Clip to circle; optionally overlay multiple tiling layers
+- Clip to circle
+
+**Menu settings:** Size, Colors, Tile Shape (Square/Hexagon/Triangle)
 
 **Parameters:**
-- `tiling_type` (hex/tri/square)
-- `cell_size`
-- `symmetry_slices` (optional)
-- `warp_strength` (0-small)
-- `layer_count` (1-3)
+- `tiling_type` (menu: Square/Hexagon/Triangle)
+- `cell_size` (auto-scaled by detail multiplier)
+- `symmetry_slices` (fixed at 1; only used in polar warp which is not exposed)
+- `warp_strength` (internal, fixed at 0.0)
+- `layer_count` (internal, fixed at 1)
+
+**Note:** Symmetry is not shown in the menu because it only affects the polar warp feature, which is always disabled from the settings UI.
 
 **Why:** Crisp lines, very readable, excellent for numbers-in-cells.
 
 ### Preset D: Stained Glass (Voronoi + Thick "Lead")
 **Look:** bold outlines, big satisfying fills
 **Method:**
-- Start from Voronoi cells (can be non-symmetric or symmetric)
+- Start from Voronoi cells with radial symmetry
 - Render thick outlines ("lead")
-- Optionally add a second pass of smaller cells near edge
+- Each glass pane becomes a fillable region; lead lines form borders
+
+**Menu settings:** Size, Colors, Symmetry (4-16), Outline (Thin/Medium/Thick)
 
 **Parameters:**
-- `outline_thickness` (key)
-- `point_count`
-- `symmetry_slices` (optional)
-- `edge_detail_boost` (more points near boundary)
+- `symmetry_slices` (menu: 4-16)
+- `outline_thickness` (menu: Thin=2, Medium=4, Thick=6; scaled by detail multiplier)
+- `point_count` (auto-scaled by detail multiplier)
+- `edge_detail_boost` (internal, default 0.5)
+- `use_symmetry` (internal, always True)
 
 **Why:** Perfectly matches paint-by-numbers filling.
 
-### Preset E: Truchet Tile Mandala (Secondary)
+### Preset E: Truchet Tile Mandala (Not implemented)
 **Look:** curvy tile paths forming regions
 **Method:**
 - Place Truchet tiles on a grid; mirror/rotate for symmetry
@@ -310,7 +321,7 @@ All presets must support:
 
 **Why:** High variety with simple rules; ensure region cleanup.
 
-### Preset F: Topographic Contour Mandala (Optional, needs cleanup)
+### Preset F: Topographic Contour Mandala (Not implemented)
 **Look:** contour bands like elevation rings
 **Method:**
 - Generate radial noise field; take contour levels into bands
@@ -323,40 +334,47 @@ All presets must support:
 
 **Why:** Pretty, but requires strong merging/smoothing to avoid thin regions.
 
-#### Preset Selection Recommendation for v1
-Implement in this order:
-1. Voronoi Mandala (A)
-2. Polar Harmonics (B)
-3. Geometric Tiling (C)
-4. Stained Glass (D)
-Then add E/F if desired.
+#### Implementation Status
+Presets A-D are implemented. Presets E and F are future work.
 
 ---
 
 ## Scale + Color Count Selectability (Locked)
 
-Provide a settings UI (controller-friendly) to choose:
-- `preset` (A/B/C/D/...)
-- `scale` (e.g., Small/Medium/Large) affecting resolution + detail
-- `num_colors` (e.g., 12/24/36/48)
-- optional: `symmetry_slices`, outline thickness, etc.
+The settings UI is controller-friendly and shows **per-generator options** — the menu rebuilds dynamically when the preset changes.
 
-Implementation guidance:
-- Use "difficulty presets" that map to concrete params per generator
+### Common settings (all presets)
+- **Preset**: Voronoi Mandala / Polar Harmonics / Geometric Tiling / Stained Glass
+- **Size**: Small (256px) / Medium (384px) / Large (512px) / Extra Large (640px)
+  - Each size has a detail multiplier (0.5 / 0.75 / 1.0 / 1.25) that auto-scales generator params
+- **Colors**: 6 / 8 / 12 / 16 / 24
+
+### Per-generator settings
+| Setting | Voronoi | Polar | Tiling | Stained Glass |
+|---|---|---|---|---|
+| Symmetry (4-16) | yes | yes | — | yes |
+| Rings (3-8) | — | yes | — | — |
+| Petals (None/Shallow/Medium/Deep) | — | yes | — | — |
+| Tile Shape (Square/Hexagon/Triangle) | — | — | yes | — |
+| Outline (Thin/Medium/Thick) | — | — | — | yes |
+
+Implementation details:
+- `_build_menu()` is called on init and whenever the preset selector changes
+- `_apply_settings()` reads menu items by label to update PuzzleSettings
 - Keep determinism: save `preset + params + seed` so puzzles regenerate identically
 
 ---
 
-## Milestones (Do in Order)
+## Milestones (All Complete)
 
-1. Implement loader for stub puzzle assets (`region_ids.png + puzzle.json`)
-2. Precompute runs, centroids, adjacency
-3. Implement selection navigation (right stick + prefer unfilled) and D-pad quadrant jump
-4. Implement camera pan + trigger zoom + nudge + L3 snap
-5. Implement hold-to-fill (temp preview -> commit/reject) + cancel-on-movement
-6. Implement autosave + load
-7. Implement numbers-in-regions rendering with thresholds
-8. Add generator presets A-D (export to puzzle format)
-9. Add settings menu for preset/scale/colors
-10. Add main menu (New Game / Continue / Gallery)
-11. Add completion snapshot + gallery viewer
+1. ~~Implement loader for stub puzzle assets (`region_ids.png + puzzle.json`)~~
+2. ~~Precompute runs, centroids, adjacency~~
+3. ~~Implement selection navigation (right stick + prefer unfilled) and D-pad quadrant jump~~
+4. ~~Implement camera pan + trigger zoom + nudge + L3 snap~~
+5. ~~Implement hold-to-fill (temp preview -> commit/reject) + cancel-on-movement~~
+6. ~~Implement autosave + load~~
+7. ~~Implement numbers-in-regions rendering with thresholds~~
+8. ~~Add generator presets A-D (export to puzzle format)~~
+9. ~~Add settings menu for preset/scale/colors (with per-generator options)~~
+10. ~~Add main menu (New Game / Continue / Gallery)~~
+11. ~~Add completion snapshot + gallery viewer~~
