@@ -181,6 +181,7 @@ def create_puzzle(
     generator: BaseGenerator,
     output_dir: Path,
     num_colors: int = 6,
+    palette: Sequence[tuple[int, int, int]] | None = None,
 ) -> GeneratedPuzzle:
     """Generate and export a puzzle in one step.
 
@@ -188,10 +189,11 @@ def create_puzzle(
         generator: Initialized generator to use.
         output_dir: Directory to write files to.
         num_colors: Number of colors in palette.
+        palette: Optional custom palette (RGB tuples).
 
     Returns:
         The generated puzzle data.
     """
     puzzle = generator.generate()
-    export_puzzle(puzzle, output_dir, num_colors)
+    export_puzzle(puzzle, output_dir, num_colors, palette=palette)
     return puzzle

@@ -18,6 +18,7 @@ from generators import (
 )
 from menu import Menu, MenuItem, MenuItemType, MenuRenderer, MenuController
 from input_handler import InputHandler, BUTTON_A, BUTTON_B, BUTTON_LB, BUTTON_RB
+from palettes import PALETTE_NAMES, get_palette
 
 
 # Scale presets: name -> (width, height, detail_multiplier)
@@ -66,6 +67,7 @@ class PuzzleSettings:
     preset: str = "voronoi_mandala"
     scale: str = "Medium"
     num_colors: int = 6
+    palette_name: str = "Classic"
     symmetry: int = 8
     seed: int | None = None  # None = random
     # Polar Harmonics options
@@ -188,6 +190,22 @@ class SettingsMenu:
             ),
         ]
 
+        # Palette selector (shown for all generators)
+        palette_options = ["Random"] + PALETTE_NAMES
+        palette_idx = (
+            palette_options.index(self.settings.palette_name)
+            if self.settings.palette_name in palette_options
+            else 0
+        )
+        items.append(
+            MenuItem(
+                label="Palette",
+                item_type=MenuItemType.SELECTOR,
+                options=palette_options,
+                selected_index=palette_idx,
+            )
+        )
+
         current_preset = self.settings.preset
 
         # Symmetry: relevant for voronoi, polar harmonics, stained glass
@@ -306,6 +324,9 @@ class SettingsMenu:
                 ]
             elif item.label == "Colors":
                 self.settings.num_colors = COLOR_OPTIONS[item.selected_index]
+            elif item.label == "Palette":
+                palette_options = ["Random"] + PALETTE_NAMES
+                self.settings.palette_name = palette_options[item.selected_index]
             elif item.label == "Symmetry":
                 self.settings.symmetry = SYMMETRY_OPTIONS[item.selected_index]
             elif item.label == "Rings":
@@ -399,7 +420,12 @@ class SettingsMenu:
         try:
             kwargs = self.settings.to_generator_kwargs()
             generator = get_generator(self.settings.preset, **kwargs)
-            create_puzzle(generator, output_dir, num_colors=self.settings.num_colors)
+            palette = get_palette(self.settings.palette_name, self.settings.num_colors)
+            create_puzzle(
+                generator, output_dir,
+                num_colors=self.settings.num_colors,
+                palette=palette,
+            )
             return True
         except Exception as e:
             print(f"Failed to generate puzzle: {e}")
