@@ -282,10 +282,19 @@ def load_puzzle(puzzle_dir: Path) -> Puzzle:
         height=puzzle_data["height"],
     )
 
-    # Pre-fill the border region (pixels outside the circle).
-    # Its centroid falls at the image center due to corner symmetry,
-    # which would cause a stray number to render in the middle.
+    # Pre-fill non-playable regions so they are excluded from
+    # number rendering, selection, and completion checking.
+
+    # Border region (pixels outside the circle): its centroid falls at
+    # the image center due to corner symmetry.
     border_region = int(region_ids[0, 0])
     puzzle.filled[border_region] = True
+
+    # Structural "framework" regions like stained glass lead lines:
+    # these span the entire puzzle and are adjacent to most other regions.
+    half = puzzle.num_regions * 0.5
+    for i in range(puzzle.num_regions):
+        if not puzzle.filled[i] and len(puzzle.adj[i]) >= half:
+            puzzle.filled[i] = True
 
     return puzzle
