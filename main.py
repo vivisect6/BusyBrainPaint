@@ -593,6 +593,11 @@ def run_game(
     fill_controller = FillController()
     save_manager = SaveManager()
 
+    # Draw any pre-filled regions (e.g. border region outside the circle)
+    for i in range(puzzle.num_regions):
+        if puzzle.filled[i]:
+            renderer.draw_filled_region(i)
+
     # Game state
     selected_palette = 0
     running = True

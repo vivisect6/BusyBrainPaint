@@ -268,7 +268,7 @@ def load_puzzle(puzzle_dir: Path) -> Puzzle:
     region_area, region_bbox, region_centroid = compute_region_stats(region_runs)
     adj = build_adjacency(region_ids, num_regions)
 
-    return Puzzle(
+    puzzle = Puzzle(
         region_ids=region_ids,
         palette=palette,
         palette_numbers=palette_numbers,
@@ -281,3 +281,11 @@ def load_puzzle(puzzle_dir: Path) -> Puzzle:
         width=puzzle_data["width"],
         height=puzzle_data["height"],
     )
+
+    # Pre-fill the border region (pixels outside the circle).
+    # Its centroid falls at the image center due to corner symmetry,
+    # which would cause a stray number to render in the middle.
+    border_region = int(region_ids[0, 0])
+    puzzle.filled[border_region] = True
+
+    return puzzle
