@@ -91,7 +91,7 @@ class PuzzleSettings:
             kwargs["relax_iters"] = 1
         elif self.preset == "stained_glass":
             kwargs["symmetry_slices"] = self.symmetry
-            kwargs["point_count"] = max(int(40 * detail), self.symmetry * 3)
+            kwargs["point_count"] = max(int(80 * detail), self.symmetry * 3)
             base_thickness = OUTLINE_WEIGHT_PRESETS.get(self.outline_weight, 4)
             kwargs["outline_thickness"] = max(1, int(base_thickness * detail))
 
