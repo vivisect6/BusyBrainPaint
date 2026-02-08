@@ -7,7 +7,6 @@ Usage:
 Examples:
     python generate_puzzle.py voronoi_mandala puzzles/my_puzzle
     python generate_puzzle.py stained_glass puzzles/stained --size 512 --colors 8
-    python generate_puzzle.py polar_harmonics puzzles/petals --seed 12345
 """
 
 import argparse
@@ -17,7 +16,6 @@ from generators import (
     get_generator,
     create_puzzle,
     PRESETS,
-    TilingType,
 )
 
 
@@ -29,8 +27,6 @@ def main() -> None:
         epilog="""
 Available presets:
   voronoi_mandala  - Stained-glass / organic cell mandalas
-  polar_harmonics  - Classic mandala petals, rosettes, rings
-  geometric_tiling - Crisp mosaic / Islamic tile patterns
   stained_glass    - Bold outlines, big satisfying fills
 """,
     )
@@ -84,34 +80,6 @@ Available presets:
         help="Lloyd relaxation iterations for Voronoi (default: 1)",
     )
 
-    # Polar harmonics options
-    parser.add_argument(
-        "--rings",
-        type=int,
-        default=5,
-        help="Ring count for polar harmonics (default: 5)",
-    )
-    parser.add_argument(
-        "--petal-depth",
-        type=float,
-        default=0.3,
-        help="Petal depth for polar harmonics (default: 0.3)",
-    )
-
-    # Geometric tiling options
-    parser.add_argument(
-        "--tiling",
-        choices=["square", "hexagon", "triangle"],
-        default="hexagon",
-        help="Tiling type for geometric preset (default: hexagon)",
-    )
-    parser.add_argument(
-        "--cell-size",
-        type=int,
-        default=32,
-        help="Cell size for geometric tiling (default: 32)",
-    )
-
     # Stained glass options
     parser.add_argument(
         "--outline",
@@ -134,12 +102,6 @@ Available presets:
     if args.preset == "voronoi_mandala":
         kwargs["point_count"] = args.points
         kwargs["relax_iters"] = args.relax
-    elif args.preset == "polar_harmonics":
-        kwargs["ring_count"] = args.rings
-        kwargs["petal_depth"] = args.petal_depth
-    elif args.preset == "geometric_tiling":
-        kwargs["tiling_type"] = TilingType(args.tiling)
-        kwargs["cell_size"] = args.cell_size
     elif args.preset == "stained_glass":
         kwargs["point_count"] = args.points
         kwargs["outline_thickness"] = args.outline

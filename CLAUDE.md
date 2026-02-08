@@ -241,7 +241,7 @@ All presets must support:
 - Compute Voronoi diagram, clip to circle
 - Optionally Lloyd relax 1-3 iterations for smoother cells
 
-**Menu settings:** Size, Colors, Symmetry (4-16)
+**Menu settings:** Size, Colors, Palette, Symmetry (4-16)
 
 **Parameters:**
 - `symmetry_slices` (menu: 4-16)
@@ -251,53 +251,14 @@ All presets must support:
 
 **Why:** Always closed cells, scalable complexity, very robust.
 
-### Preset B: Polar Harmonics (Petals/Rings/Spokes)
-**Look:** classic mandala petals, rosettes, lace-like rings
-**Method:**
-- Work in polar coords; fold theta into `symmetry_slices`
-- Define layers with sine/cos harmonics; threshold into bands
-- Combine rings + petals + spokes with boolean ops
-
-**Menu settings:** Size, Colors, Symmetry (4-16), Rings (3-8), Petals (None/Shallow/Medium/Deep)
-
-**Parameters:**
-- `symmetry_slices` (menu: 4-16)
-- `ring_count` (menu: 3-8)
-- `petal_depth` (menu: None=0.0, Shallow=0.15, Medium=0.3, Deep=0.5)
-- `petal_freq` (internal, defaults to symmetry_slices)
-- `spoke_count` (internal, defaults to symmetry_slices)
-- `spoke_width` (internal, default 0.02)
-- `jitter` (internal, default 0.0)
-
-**Why:** Deterministic, controllable, and produces clean regions.
-
-### Preset C: Geometric Tiling (Clipped to Circle)
-**Look:** crisp mosaic / "islamic tile" vibes
-**Method:**
-- Build base tiling (hex/tri/square) in world coords
-- Clip to circle
-
-**Menu settings:** Size, Colors, Tile Shape (Square/Hexagon/Triangle)
-
-**Parameters:**
-- `tiling_type` (menu: Square/Hexagon/Triangle)
-- `cell_size` (auto-scaled by detail multiplier)
-- `symmetry_slices` (fixed at 1; only used in polar warp which is not exposed)
-- `warp_strength` (internal, fixed at 0.0)
-- `layer_count` (internal, fixed at 1)
-
-**Note:** Symmetry is not shown in the menu because it only affects the polar warp feature, which is always disabled from the settings UI.
-
-**Why:** Crisp lines, very readable, excellent for numbers-in-cells.
-
-### Preset D: Stained Glass (Voronoi + Thick "Lead")
+### Preset B: Stained Glass (Voronoi + Thick "Lead")
 **Look:** bold outlines, big satisfying fills
 **Method:**
 - Start from Voronoi cells with radial symmetry
 - Render thick outlines ("lead")
 - Each glass pane becomes a fillable region; lead lines form borders
 
-**Menu settings:** Size, Colors, Symmetry (4-16), Outline (Thin/Medium/Thick)
+**Menu settings:** Size, Colors, Palette, Symmetry (4-16), Outline (Thin/Medium/Thick)
 
 **Parameters:**
 - `symmetry_slices` (menu: 4-16)
@@ -335,7 +296,7 @@ All presets must support:
 **Why:** Pretty, but requires strong merging/smoothing to avoid thin regions.
 
 #### Implementation Status
-Presets A-D are implemented. Presets E and F are future work.
+Presets A-B are implemented. Presets E and F are future work.
 
 ---
 
@@ -344,19 +305,19 @@ Presets A-D are implemented. Presets E and F are future work.
 The settings UI is controller-friendly and shows **per-generator options** — the menu rebuilds dynamically when the preset changes.
 
 ### Common settings (all presets)
-- **Preset**: Voronoi Mandala / Polar Harmonics / Geometric Tiling / Stained Glass
+- **Preset**: Voronoi Mandala / Stained Glass
 - **Size**: Small (256px) / Medium (384px) / Large (512px) / Extra Large (640px)
   - Each size has a detail multiplier (0.5 / 0.75 / 1.0 / 1.25) that auto-scales generator params
 - **Colors**: 6 / 8 / 12 / 16 / 24
+- **Palette**: Random / Classic / Pastel / Jewel / Earth / Ocean / Sunset / Berry / Autumn / Neon / Stained Glass
+  - 10 curated 24-color palettes defined in `palettes.py`; each ordered so any prefix (6/8/12/16/24) is maximally distinguishable
+  - "Random" picks a palette at generation time
 
 ### Per-generator settings
-| Setting | Voronoi | Polar | Tiling | Stained Glass |
-|---|---|---|---|---|
-| Symmetry (4-16) | yes | yes | — | yes |
-| Rings (3-8) | — | yes | — | — |
-| Petals (None/Shallow/Medium/Deep) | — | yes | — | — |
-| Tile Shape (Square/Hexagon/Triangle) | — | — | yes | — |
-| Outline (Thin/Medium/Thick) | — | — | — | yes |
+| Setting | Voronoi | Stained Glass |
+|---|---|---|
+| Symmetry (4-16) | yes | yes |
+| Outline (Thin/Medium/Thick) | — | yes |
 
 Implementation details:
 - `_build_menu()` is called on init and whenever the preset selector changes
@@ -374,7 +335,7 @@ Implementation details:
 5. ~~Implement hold-to-fill (temp preview -> commit/reject) + cancel-on-movement~~
 6. ~~Implement autosave + load~~
 7. ~~Implement numbers-in-regions rendering with thresholds~~
-8. ~~Add generator presets A-D (export to puzzle format)~~
+8. ~~Add generator presets A-B (export to puzzle format)~~
 9. ~~Add settings menu for preset/scale/colors (with per-generator options)~~
 10. ~~Add main menu (New Game / Continue / Gallery)~~
 11. ~~Add completion snapshot + gallery viewer~~

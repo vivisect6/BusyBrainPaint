@@ -14,7 +14,6 @@ from generators import (
     get_generator,
     create_puzzle,
     PRESETS,
-    TilingType,
 )
 from menu import Menu, MenuItem, MenuItemType, MenuRenderer, MenuController
 from input_handler import InputHandler, BUTTON_A, BUTTON_B, BUTTON_LB, BUTTON_RB
@@ -38,24 +37,10 @@ SYMMETRY_OPTIONS = [4, 6, 8, 10, 12, 16]
 # Preset display names
 PRESET_NAMES = {
     "voronoi_mandala": "Voronoi Mandala",
-    "polar_harmonics": "Polar Harmonics",
-    "geometric_tiling": "Geometric Tiling",
     "stained_glass": "Stained Glass",
 }
 
 # Per-generator option values
-RING_COUNT_OPTIONS = [3, 4, 5, 6, 7, 8]
-
-PETAL_DEPTH_PRESETS = {"None": 0.0, "Shallow": 0.15, "Medium": 0.3, "Deep": 0.5}
-PETAL_DEPTH_OPTIONS = list(PETAL_DEPTH_PRESETS.keys())
-
-TILE_SHAPE_MAP = {
-    "Square": TilingType.SQUARE,
-    "Hexagon": TilingType.HEXAGON,
-    "Triangle": TilingType.TRIANGLE,
-}
-TILE_SHAPE_OPTIONS = list(TILE_SHAPE_MAP.keys())
-
 OUTLINE_WEIGHT_PRESETS = {"Thin": 2, "Medium": 4, "Thick": 6}
 OUTLINE_WEIGHT_OPTIONS = list(OUTLINE_WEIGHT_PRESETS.keys())
 
@@ -70,11 +55,6 @@ class PuzzleSettings:
     palette_name: str = "Classic"
     symmetry: int = 8
     seed: int | None = None  # None = random
-    # Polar Harmonics options
-    ring_count: int = 5
-    petal_depth: str = "Medium"
-    # Geometric Tiling options
-    tiling_type: str = "Hexagon"
     # Stained Glass options
     outline_weight: str = "Medium"
 
@@ -100,21 +80,11 @@ class PuzzleSettings:
 
         if self.preset == "voronoi_mandala":
             kwargs["symmetry_slices"] = self.symmetry
-            kwargs["point_count"] = int(25 * detail)
+            kwargs["point_count"] = int(30 * detail)
             kwargs["relax_iters"] = 1
-        elif self.preset == "polar_harmonics":
-            kwargs["symmetry_slices"] = self.symmetry
-            kwargs["ring_count"] = self.ring_count
-            kwargs["petal_depth"] = PETAL_DEPTH_PRESETS.get(self.petal_depth, 0.3)
-        elif self.preset == "geometric_tiling":
-            kwargs["symmetry_slices"] = 1
-            kwargs["tiling_type"] = TILE_SHAPE_MAP.get(
-                self.tiling_type, TilingType.HEXAGON
-            )
-            kwargs["cell_size"] = int(32 / detail) if detail > 0 else 32
         elif self.preset == "stained_glass":
             kwargs["symmetry_slices"] = self.symmetry
-            kwargs["point_count"] = int(20 * detail)
+            kwargs["point_count"] = max(int(40 * detail), self.symmetry * 3)
             base_thickness = OUTLINE_WEIGHT_PRESETS.get(self.outline_weight, 4)
             kwargs["outline_thickness"] = max(1, int(base_thickness * detail))
 
@@ -208,61 +178,14 @@ class SettingsMenu:
 
         current_preset = self.settings.preset
 
-        # Symmetry: relevant for voronoi, polar harmonics, stained glass
-        if current_preset in ("voronoi_mandala", "polar_harmonics", "stained_glass"):
+        # Symmetry: relevant for voronoi mandala and stained glass
+        if current_preset in ("voronoi_mandala", "stained_glass"):
             items.append(
                 MenuItem(
                     label="Symmetry",
                     item_type=MenuItemType.SELECTOR,
                     options=symmetry_options,
                     selected_index=symmetry_idx,
-                )
-            )
-
-        # Polar Harmonics specific: ring count, petal depth
-        if current_preset == "polar_harmonics":
-            ring_options = [str(r) for r in RING_COUNT_OPTIONS]
-            ring_idx = (
-                RING_COUNT_OPTIONS.index(self.settings.ring_count)
-                if self.settings.ring_count in RING_COUNT_OPTIONS
-                else 2
-            )
-            items.append(
-                MenuItem(
-                    label="Rings",
-                    item_type=MenuItemType.SELECTOR,
-                    options=ring_options,
-                    selected_index=ring_idx,
-                )
-            )
-
-            petal_idx = (
-                PETAL_DEPTH_OPTIONS.index(self.settings.petal_depth)
-                if self.settings.petal_depth in PETAL_DEPTH_OPTIONS
-                else 2
-            )
-            items.append(
-                MenuItem(
-                    label="Petals",
-                    item_type=MenuItemType.SELECTOR,
-                    options=PETAL_DEPTH_OPTIONS,
-                    selected_index=petal_idx,
-                )
-            )
-
-        # Geometric Tiling specific: tile shape
-        if current_preset == "geometric_tiling":
-            tile_idx = (
-                TILE_SHAPE_OPTIONS.index(self.settings.tiling_type)
-                if self.settings.tiling_type in TILE_SHAPE_OPTIONS
-                else 1
-            )
-            items.append(
-                MenuItem(
-                    label="Tile Shape",
-                    item_type=MenuItemType.SELECTOR,
-                    options=TILE_SHAPE_OPTIONS,
-                    selected_index=tile_idx,
                 )
             )
 
@@ -329,18 +252,6 @@ class SettingsMenu:
                 self.settings.palette_name = palette_options[item.selected_index]
             elif item.label == "Symmetry":
                 self.settings.symmetry = SYMMETRY_OPTIONS[item.selected_index]
-            elif item.label == "Rings":
-                self.settings.ring_count = RING_COUNT_OPTIONS[
-                    item.selected_index
-                ]
-            elif item.label == "Petals":
-                self.settings.petal_depth = PETAL_DEPTH_OPTIONS[
-                    item.selected_index
-                ]
-            elif item.label == "Tile Shape":
-                self.settings.tiling_type = TILE_SHAPE_OPTIONS[
-                    item.selected_index
-                ]
             elif item.label == "Outline":
                 self.settings.outline_weight = OUTLINE_WEIGHT_OPTIONS[
                     item.selected_index

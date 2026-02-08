@@ -5,15 +5,11 @@ mandala-style paint-by-numbers puzzles.
 
 Available generators:
 - VoronoiMandalaGenerator (Preset A): Stained-glass organic cells
-- PolarHarmonicsGenerator (Preset B): Classic petals, rings, spokes
-- GeometricTilingGenerator (Preset C): Crisp mosaic patterns
-- StainedGlassGenerator (Preset D): Bold outlines, big fills
+- StainedGlassGenerator (Preset B): Bold outlines, big fills
 """
 
 from .base import BaseGenerator, GeneratorParams, GeneratedPuzzle
 from .voronoi_mandala import VoronoiMandalaGenerator, VoronoiMandalaParams
-from .polar_harmonics import PolarHarmonicsGenerator, PolarHarmonicsParams
-from .geometric_tiling import GeometricTilingGenerator, GeometricTilingParams, TilingType
 from .stained_glass import StainedGlassGenerator, StainedGlassParams
 from .export import export_puzzle, create_puzzle, generate_palette
 
@@ -25,11 +21,6 @@ __all__ = [
     # Generators
     "VoronoiMandalaGenerator",
     "VoronoiMandalaParams",
-    "PolarHarmonicsGenerator",
-    "PolarHarmonicsParams",
-    "GeometricTilingGenerator",
-    "GeometricTilingParams",
-    "TilingType",
     "StainedGlassGenerator",
     "StainedGlassParams",
     # Export functions
@@ -45,16 +36,6 @@ PRESETS = {
         "generator": VoronoiMandalaGenerator,
         "params": VoronoiMandalaParams,
         "description": "Stained-glass / organic cell mandalas",
-    },
-    "polar_harmonics": {
-        "generator": PolarHarmonicsGenerator,
-        "params": PolarHarmonicsParams,
-        "description": "Classic mandala petals, rosettes, rings",
-    },
-    "geometric_tiling": {
-        "generator": GeometricTilingGenerator,
-        "params": GeometricTilingParams,
-        "description": "Crisp mosaic / Islamic tile patterns",
     },
     "stained_glass": {
         "generator": StainedGlassGenerator,
