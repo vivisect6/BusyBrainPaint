@@ -205,7 +205,7 @@ class GameRenderer:
         scaled_h = int(self.puzzle.height * zoom)
 
         if scaled_w > 0 and scaled_h > 0:
-            scaled = pygame.transform.scale(composite, (scaled_w, scaled_h))
+            scaled = pygame.transform.smoothscale(composite, (scaled_w, scaled_h))
             # Blit at camera-determined position
             self.screen.blit(scaled, (int(origin_x), int(origin_y)))
 
