@@ -29,6 +29,7 @@ class MenuItem:
     action: Callable[[], None] | None = None  # For ACTION type
     submenu: "Menu | None" = None  # For SUBMENU type
     enabled: bool = True
+    swatches: list[list[tuple[int, int, int]]] | None = None  # Per-option color swatches
 
     def get_display_value(self) -> str:
         """Get the current display value for selector items."""
@@ -194,6 +195,20 @@ class MenuRenderer:
                 centery=y + 20,
             )
             self.screen.blit(value_surf, value_rect)
+
+            # Draw color swatches if available
+            if item.swatches and item.selected_index < len(item.swatches):
+                colors = item.swatches[item.selected_index]
+                if colors:
+                    swatch_size = 12
+                    swatch_gap = 2
+                    sx = value_rect.right + 12
+                    sy = value_rect.centery - swatch_size // 2
+                    for color in colors:
+                        rect = pygame.Rect(sx, sy, swatch_size, swatch_size)
+                        pygame.draw.rect(self.screen, color, rect)
+                        pygame.draw.rect(self.screen, (40, 40, 45), rect, 1)
+                        sx += swatch_size + swatch_gap
         else:
             # Centered label
             label_surf = self.item_font.render(item.label, True, text_color)

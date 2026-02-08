@@ -241,10 +241,10 @@ All presets must support:
 - Compute Voronoi diagram, clip to circle
 - Optionally Lloyd relax 1-3 iterations for smoother cells
 
-**Menu settings:** Size, Colors, Palette, Symmetry (4-16)
+**Menu settings:** Size, Colors, Palette, Symmetry (Minimal/Low/Medium/High/Very High/Ultra)
 
 **Parameters:**
-- `symmetry_slices` (menu: 4-16)
+- `symmetry_slices` (menu: Minimal=4 / Low=6 / Medium=8 / High=10 / Very High=12 / Ultra=16)
 - `point_count` (auto-scaled by detail multiplier)
 - `radial_bias` (internal, default 0.5)
 - `relax_iters` (internal, fixed at 1)
@@ -258,10 +258,10 @@ All presets must support:
 - Render thick outlines ("lead")
 - Each glass pane becomes a fillable region; lead lines form borders
 
-**Menu settings:** Size, Colors, Palette, Symmetry (4-16), Outline (Thin/Medium/Thick)
+**Menu settings:** Size, Colors, Palette, Symmetry (Minimal...Ultra), Outline (Thin/Medium/Thick)
 
 **Parameters:**
-- `symmetry_slices` (menu: 4-16)
+- `symmetry_slices` (menu: Minimal=4 / Low=6 / Medium=8 / High=10 / Very High=12 / Ultra=16)
 - `outline_thickness` (menu: Thin=2, Medium=4, Thick=6; scaled by detail multiplier)
 - `point_count` (auto-scaled by detail multiplier)
 - `edge_detail_boost` (internal, default 0.5)
@@ -306,17 +306,18 @@ The settings UI is controller-friendly and shows **per-generator options** — t
 
 ### Common settings (all presets)
 - **Preset**: Voronoi Mandala / Stained Glass
-- **Size**: Small (256px) / Medium (384px) / Large (512px) / Extra Large (640px)
-  - Each size has a detail multiplier (0.5 / 0.75 / 1.0 / 1.25) that auto-scales generator params
+- **Size**: Small (512px) / Medium (768px) / Large (1024px) / Extra Large (1280px)
+  - Each size has a detail multiplier (1.0 / 1.5 / 2.0 / 2.5) that auto-scales generator params
 - **Colors**: 6 / 8 / 12 / 16 / 24
 - **Palette**: Random / Classic / Pastel / Jewel / Earth / Ocean / Sunset / Berry / Autumn / Neon / Stained Glass
+  - Selector shows inline color swatches that update when color count changes
   - 10 curated 24-color palettes defined in `palettes.py`; each ordered so any prefix (6/8/12/16/24) is maximally distinguishable
   - "Random" picks a palette at generation time
 
 ### Per-generator settings
 | Setting | Voronoi | Stained Glass |
 |---|---|---|
-| Symmetry (4-16) | yes | yes |
+| Symmetry (Minimal/Low/Medium/High/Very High/Ultra) | yes | yes |
 | Outline (Thin/Medium/Thick) | — | yes |
 
 Implementation details:

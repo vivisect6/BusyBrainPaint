@@ -44,8 +44,8 @@ Available presets:
     parser.add_argument(
         "--size",
         type=int,
-        default=512,
-        help="Puzzle size in pixels (default: 512)",
+        default=768,
+        help="Puzzle size in pixels (default: 768)",
     )
     parser.add_argument(
         "--colors",

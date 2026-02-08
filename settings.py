@@ -22,17 +22,24 @@ from palettes import PALETTE_NAMES, get_palette
 
 # Scale presets: name -> (width, height, detail_multiplier)
 SCALE_PRESETS = {
-    "Small": (256, 256, 0.5),
-    "Medium": (384, 384, 0.75),
-    "Large": (512, 512, 1.0),
-    "Extra Large": (640, 640, 1.25),
+    "Small": (512, 512, 1.0),
+    "Medium": (768, 768, 1.5),
+    "Large": (1024, 1024, 2.0),
+    "Extra Large": (1280, 1280, 2.5),
 }
 
 # Color count options
 COLOR_OPTIONS = [6, 8, 12, 16, 24]
 
-# Symmetry options
-SYMMETRY_OPTIONS = [4, 6, 8, 10, 12, 16]
+# Symmetry presets: label -> number of slices
+SYMMETRY_PRESETS = {
+    "Minimal": 4,
+    "Low": 6,
+    "Medium": 8,
+    "High": 10,
+    "Very High": 12,
+    "Ultra": 16,
+}
 
 # Preset display names
 PRESET_NAMES = {
@@ -115,7 +122,8 @@ class SettingsMenu:
         preset_keys = list(PRESET_NAMES.keys())
         scale_options = list(SCALE_PRESETS.keys())
         color_options = [str(c) for c in COLOR_OPTIONS]
-        symmetry_options = [str(s) for s in SYMMETRY_OPTIONS]
+        symmetry_options = list(SYMMETRY_PRESETS.keys())
+        symmetry_values = list(SYMMETRY_PRESETS.values())
 
         preset_idx = (
             preset_keys.index(self.settings.preset)
@@ -133,8 +141,8 @@ class SettingsMenu:
             else 0
         )
         symmetry_idx = (
-            SYMMETRY_OPTIONS.index(self.settings.symmetry)
-            if self.settings.symmetry in SYMMETRY_OPTIONS
+            symmetry_values.index(self.settings.symmetry)
+            if self.settings.symmetry in symmetry_values
             else 2
         )
 
@@ -167,12 +175,16 @@ class SettingsMenu:
             if self.settings.palette_name in palette_options
             else 0
         )
+        palette_swatches: list[list[tuple[int, int, int]]] = [[]]  # Empty for "Random"
+        for name in PALETTE_NAMES:
+            palette_swatches.append(get_palette(name, self.settings.num_colors))
         items.append(
             MenuItem(
                 label="Palette",
                 item_type=MenuItemType.SELECTOR,
                 options=palette_options,
                 selected_index=palette_idx,
+                swatches=palette_swatches,
             )
         )
 
@@ -223,6 +235,7 @@ class SettingsMenu:
 
         self.menu = Menu("New Puzzle Settings", items)
         self._last_preset_idx = preset_idx
+        self._last_color_idx = color_idx
 
     def _on_generate(self) -> None:
         """Handle generate button press."""
@@ -251,7 +264,7 @@ class SettingsMenu:
                 palette_options = ["Random"] + PALETTE_NAMES
                 self.settings.palette_name = palette_options[item.selected_index]
             elif item.label == "Symmetry":
-                self.settings.symmetry = SYMMETRY_OPTIONS[item.selected_index]
+                self.settings.symmetry = list(SYMMETRY_PRESETS.values())[item.selected_index]
             elif item.label == "Outline":
                 self.settings.outline_weight = OUTLINE_WEIGHT_OPTIONS[
                     item.selected_index
@@ -313,6 +326,18 @@ class SettingsMenu:
             if preset_item.selected_index != self._last_preset_idx:
                 self._apply_settings()
                 self._build_menu()
+
+            # Update palette swatches when color count changes
+            colors_item = self.menu.items[2]  # "Colors" selector
+            if colors_item.selected_index != self._last_color_idx:
+                self._last_color_idx = colors_item.selected_index
+                num_colors = COLOR_OPTIONS[colors_item.selected_index]
+                for item in self.menu.items:
+                    if item.label == "Palette" and item.swatches is not None:
+                        item.swatches = [[]]  # Empty for "Random"
+                        for name in PALETTE_NAMES:
+                            item.swatches.append(get_palette(name, num_colors))
+                        break
 
             # Render
             self.renderer.render(self.menu)
