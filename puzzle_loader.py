@@ -284,17 +284,20 @@ def load_puzzle(puzzle_dir: Path) -> Puzzle:
 
     # Pre-fill non-playable regions so they are excluded from
     # number rendering, selection, and completion checking.
+    non_playable = puzzle_data.get("non_playable", None)
+    if non_playable is not None:
+        for rid in non_playable:
+            new_rid = id_mapping.get(rid)
+            if new_rid is not None:
+                puzzle.filled[new_rid] = True
+    else:
+        # Legacy fallback for old puzzles without the field
+        border_region = int(region_ids[0, 0])
+        puzzle.filled[border_region] = True
 
-    # Border region (pixels outside the circle): its centroid falls at
-    # the image center due to corner symmetry.
-    border_region = int(region_ids[0, 0])
-    puzzle.filled[border_region] = True
-
-    # Structural "framework" regions like stained glass lead lines:
-    # these span the entire puzzle and are adjacent to most other regions.
-    half = puzzle.num_regions * 0.5
-    for i in range(puzzle.num_regions):
-        if not puzzle.filled[i] and len(puzzle.adj[i]) >= half:
-            puzzle.filled[i] = True
+        half = puzzle.num_regions * 0.5
+        for i in range(puzzle.num_regions):
+            if not puzzle.filled[i] and len(puzzle.adj[i]) >= half:
+                puzzle.filled[i] = True
 
     return puzzle

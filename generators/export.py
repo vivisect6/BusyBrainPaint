@@ -312,6 +312,22 @@ def export_puzzle(
             "number": i + 1,
         })
 
+    # Identify non-playable regions (border + structural framework)
+    num_regions = puzzle.num_regions
+    region_ids = puzzle.region_ids
+    non_playable: list[int] = []
+
+    # Border region (outside the circle for mandalas)
+    border_region = int(region_ids[0, 0])
+    non_playable.append(border_region)
+
+    # Structural "framework" regions (e.g. stained glass lead lines)
+    adj = _build_adjacency(region_ids, num_regions)
+    half = num_regions / 2.0
+    for rid in range(num_regions):
+        if rid != border_region and len(adj[rid]) > half:
+            non_playable.append(rid)
+
     # Create puzzle.json
     puzzle_json = {
         "version": 1,
@@ -319,6 +335,7 @@ def export_puzzle(
         "height": puzzle.height,
         "palette": palette_data,
         "region_color": region_colors,
+        "non_playable": non_playable,
         "generator": {
             "name": puzzle.generator_name,
             "params": puzzle.params,

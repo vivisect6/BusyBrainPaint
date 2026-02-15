@@ -9,6 +9,7 @@ Available generators:
 """
 
 from .base import BaseGenerator, GeneratorParams, GeneratedPuzzle
+from .cleanup import cleanup_regions, merge_tiny_regions, smooth_boundaries, remap_to_contiguous
 from .voronoi_mandala import VoronoiMandalaGenerator, VoronoiMandalaParams
 from .stained_glass import StainedGlassGenerator, StainedGlassParams
 from .export import export_puzzle, create_puzzle, generate_palette
@@ -18,6 +19,11 @@ __all__ = [
     "BaseGenerator",
     "GeneratorParams",
     "GeneratedPuzzle",
+    # Cleanup utilities
+    "cleanup_regions",
+    "merge_tiny_regions",
+    "smooth_boundaries",
+    "remap_to_contiguous",
     # Generators
     "VoronoiMandalaGenerator",
     "VoronoiMandalaParams",
